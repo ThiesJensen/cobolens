@@ -98,6 +98,18 @@ fn numeric_and_string_literals() {
 }
 
 #[test]
+fn eof_tracks_physical_line_count() {
+    // Source has three physical lines, all comments, zero logical lines.
+    // EOF must reflect the physical end of the file so parser
+    // diagnostics reported at EOF land on the right line.
+    let src = "      * only comment\n      * another comment\n      * and one more\n";
+    let (tokens, _) = lex(src);
+    let eof = tokens.last().expect("eof token");
+    assert_eq!(eof.kind, TokenKind::Eof);
+    assert_eq!(eof.span.line, 4, "three physical lines plus trailing slot");
+}
+
+#[test]
 fn error_recovery() {
     // '~' is not a valid COBOL character; the lexer must record the
     // error and keep emitting tokens from surrounding lines.

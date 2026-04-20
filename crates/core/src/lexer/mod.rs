@@ -19,15 +19,13 @@ pub mod token;
 pub fn lex(source: &str) -> (Vec<Token<'_>>, Vec<LexerError>) {
     let (logical_lines, mut errors) = preprocess(source);
     let mut tokens = Vec::new();
-    let mut last_line_no: u32 = 0;
     for line in &logical_lines {
         scan_line(line, source, &mut tokens, &mut errors);
-        last_line_no = line.line_no;
     }
-    tokens.push(Token::new(
-        TokenKind::Eof,
-        Span::new(source.len(), source.len(), last_line_no.saturating_add(1).max(1), 1),
-        "",
-    ));
+    // EOF position is derived from the physical source so parser
+    // diagnostics at end-of-file point at the real last line even when
+    // every line was a comment or was otherwise dropped in preprocess.
+    let eof_line = 1 + source.bytes().filter(|b| *b == b'\n').count() as u32;
+    tokens.push(Token::new(TokenKind::Eof, Span::new(source.len(), source.len(), eof_line, 1), ""));
     (tokens, errors)
 }
