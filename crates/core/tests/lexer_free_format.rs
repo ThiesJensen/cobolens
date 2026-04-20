@@ -114,3 +114,56 @@ fn eof_tracks_physical_line_count() {
     assert_eq!(eof.kind, TokenKind::Eof);
     assert_eq!(eof.span.line, 4);
 }
+
+/// Asserts that the same logical source lexes to the same TokenKind
+/// sequence under both formats. Only kinds are compared — spans differ
+/// because the fixed variant carries a 7-column prefix, and that is
+/// intentional, not a regression.
+fn assert_token_kinds_match(fixed: &str, free: &str) {
+    let (fixed_tokens, fixed_errors) = lex(fixed, SourceFormat::Fixed);
+    let (free_tokens, free_errors) = lex(free, SourceFormat::Free);
+    assert!(fixed_errors.is_empty(), "fixed errors: {fixed_errors:?}");
+    assert!(free_errors.is_empty(), "free errors: {free_errors:?}");
+    let fixed_kinds: Vec<TokenKind> = fixed_tokens.iter().map(|t| t.kind).collect();
+    let free_kinds: Vec<TokenKind> = free_tokens.iter().map(|t| t.kind).collect();
+    assert_eq!(
+        fixed_kinds, free_kinds,
+        "kind sequences diverge\nfixed: {fixed_kinds:?}\nfree: {free_kinds:?}"
+    );
+}
+
+#[test]
+fn parity_simple_record() {
+    assert_token_kinds_match("       01 FOO.\n", "01 FOO.\n");
+}
+
+#[test]
+fn parity_data_item_with_picture() {
+    assert_token_kinds_match(
+        "       05 AMOUNT PIC S9(7)V99 COMP-3.\n",
+        "05 AMOUNT PIC S9(7)V99 COMP-3.\n",
+    );
+}
+
+#[test]
+fn parity_string_literal() {
+    assert_token_kinds_match("       05 GREETING VALUE 'HELLO'.\n", "05 GREETING VALUE 'HELLO'.\n");
+}
+
+#[test]
+fn parity_comment_drops_whole_line_in_both_formats() {
+    // Fixed indicator `*` drops the line; free `*>` at col 1 drops the
+    // line. Both sources therefore produce the same (small) token
+    // stream from the surviving lines.
+    assert_token_kinds_match(
+        "      * header comment\n       05 X.\n",
+        "*> header comment\n05 X.\n",
+    );
+}
+
+#[test]
+fn parity_nested_group() {
+    let fixed = "       01 PARENT.\n          05 CHILD PIC X(4).\n          05 KID   PIC 9(2).\n";
+    let free = "01 PARENT.\n   05 CHILD PIC X(4).\n   05 KID   PIC 9(2).\n";
+    assert_token_kinds_match(fixed, free);
+}
