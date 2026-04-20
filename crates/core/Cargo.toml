@@ -1,5 +1,5 @@
 [package]
-name        = "core"
+name        = "copyforge-core"
 description = "Copybook parser and intermediate representation for copyforge."
 
 version.workspace      = true

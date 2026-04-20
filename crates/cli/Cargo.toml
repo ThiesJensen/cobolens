@@ -1,5 +1,5 @@
 [package]
-name        = "cli"
+name        = "copyforge-cli"
 description = "Command-line interface for copyforge."
 
 version.workspace      = true

@@ -7,7 +7,7 @@ version      = "0.0.0"
 edition      = "2021"
 rust-version = "1.80"
 license      = "MIT OR Apache-2.0"
-repository   = "https://github.com/YOURNAME/copyforge"
+repository   = "https://github.com/ThiesJensen/cobolens"
 authors      = ["copyforge contributors"]
 
 # Single source of truth for dependency versions. Workspace members opt in

@@ -3,9 +3,9 @@
 version = 3
 
 [[package]]
-name = "cli"
+name = "copyforge-cli"
 version = "0.0.0"
 
 [[package]]
-name = "core"
+name = "copyforge-core"
 version = "0.0.0"
