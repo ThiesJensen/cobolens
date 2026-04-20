@@ -1,0 +1,10 @@
+---
+source: crates/core/tests/lexer_free_format.rs
+expression: render(src)
+---
+  1:3  Identifier           "not"
+  1:7  Identifier           "a"
+  1:9  Identifier           "comment"
+  2:1  Eof                  ""
+-- errors --
+InvalidCharacter { ch: '*', span: Span { start: 0, end: 1, line: 1, column: 1 } }
