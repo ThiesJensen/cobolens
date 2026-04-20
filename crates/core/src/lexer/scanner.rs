@@ -28,16 +28,19 @@ enum RawToken {
     #[regex(r"[0-9]+(?:\.[0-9]+)?")]
     Number,
 
-    #[regex(r#""[^"\n]*""#)]
+    // COBOL represents a literal quote inside a string by doubling it
+    // (`""` / `''`), so the valid-string regex must accept the
+    // doubled form as part of the content.
+    #[regex(r#""(?:[^"\n]|"")*""#)]
     DoubleString,
 
-    #[regex(r#"'[^'\n]*'"#)]
+    #[regex(r#"'(?:[^'\n]|'')*'"#)]
     SingleString,
 
-    #[regex(r#""[^"\n]*"#, priority = 1)]
+    #[regex(r#""(?:[^"\n]|"")*"#, priority = 1)]
     UnterminatedDouble,
 
-    #[regex(r#"'[^'\n]*"#, priority = 1)]
+    #[regex(r#"'(?:[^'\n]|'')*"#, priority = 1)]
     UnterminatedSingle,
 
     #[token("\0")]
@@ -191,6 +194,21 @@ mod tests {
         let (_, errors) = scan("VALUE \"oops");
         assert_eq!(errors.len(), 1);
         assert!(matches!(errors[0], LexerError::UnterminatedStringLiteral { .. }));
+    }
+
+    #[test]
+    fn doubled_quotes_inside_string_literal_stay_in_one_token() {
+        let (tokens, errors) = scan(r#"VALUE "A""B"."#);
+        assert!(errors.is_empty(), "{errors:?}");
+        let literals: Vec<&str> =
+            tokens.iter().filter(|t| t.kind == TokenKind::StringLiteral).map(|t| t.text).collect();
+        assert_eq!(literals, vec![r#""A""B""#]);
+
+        let (tokens, errors) = scan(r#"VALUE 'A''B'."#);
+        assert!(errors.is_empty(), "{errors:?}");
+        let literals: Vec<&str> =
+            tokens.iter().filter(|t| t.kind == TokenKind::StringLiteral).map(|t| t.text).collect();
+        assert_eq!(literals, vec!["'A''B'"]);
     }
 
     #[test]
