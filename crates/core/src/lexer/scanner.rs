@@ -58,19 +58,19 @@ enum RawToken {
     Comma,
 }
 
-pub(crate) fn scan_line<'a>(
-    line: &LogicalLine,
-    source: &'a str,
-    tokens: &mut Vec<Token<'a>>,
-    errors: &mut Vec<LexerError>,
-) {
+pub(crate) fn scan_line(line: &LogicalLine, tokens: &mut Vec<Token>, errors: &mut Vec<LexerError>) {
     let mut lex = RawToken::lexer(&line.text);
     let mut at_line_start = true;
 
     while let Some(result) = lex.next() {
         let local = lex.span();
         let span = line.map_span(local.clone());
-        let text = &source[span.start..span.end];
+        // Token text comes from the *joined* logical line, not from
+        // source[span.start..span.end]: a token that straddles
+        // continuation segments would otherwise pick up intervening
+        // newlines, indicator columns, and stripped whitespace, which
+        // breaks keyword matching and literal content.
+        let text = &line.text[local.start..local.end];
 
         match result {
             Ok(RawToken::Identifier) => {
@@ -81,7 +81,7 @@ pub(crate) fn scan_line<'a>(
                     kind,
                     TokenKind::Keyword(KeywordKind::Pic) | TokenKind::Keyword(KeywordKind::Picture)
                 ) {
-                    capture_picture_string(&mut lex, line, source, tokens);
+                    capture_picture_string(&mut lex, line, tokens);
                 }
             }
             Ok(RawToken::Number) => {
@@ -118,11 +118,10 @@ fn is_level_number(text: &str) -> bool {
     text.len() == 2 && text.as_bytes().iter().all(u8::is_ascii_digit)
 }
 
-fn capture_picture_string<'a>(
+fn capture_picture_string(
     lex: &mut logos::Lexer<'_, RawToken>,
     line: &LogicalLine,
-    source: &'a str,
-    tokens: &mut Vec<Token<'a>>,
+    tokens: &mut Vec<Token>,
 ) {
     // Skip leading whitespace in remainder.
     while let Some(&b) = lex.remainder().as_bytes().first() {
@@ -145,7 +144,7 @@ fn capture_picture_string<'a>(
 
     let cursor = lex.source().len() - rem.len();
     let span = line.map_span(cursor..cursor + end_idx);
-    let text = &source[span.start..span.end];
+    let text = &line.text[cursor..cursor + end_idx];
     tokens.push(Token::new(TokenKind::PictureString, span, text));
     lex.bump(end_idx);
 }
@@ -154,7 +153,7 @@ fn capture_picture_string<'a>(
 mod tests {
     use super::*;
 
-    fn scan(text: &str) -> (Vec<Token<'_>>, Vec<LexerError>) {
+    fn scan(text: &str) -> (Vec<Token>, Vec<LexerError>) {
         use crate::lexer::fixed_format::Segment;
         let line = LogicalLine {
             text: text.to_string(),
@@ -169,7 +168,7 @@ mod tests {
         };
         let mut tokens = vec![];
         let mut errors = vec![];
-        scan_line(&line, text, &mut tokens, &mut errors);
+        scan_line(&line, &mut tokens, &mut errors);
         (tokens, errors)
     }
 
@@ -201,14 +200,20 @@ mod tests {
     fn doubled_quotes_inside_string_literal_stay_in_one_token() {
         let (tokens, errors) = scan(r#"VALUE "A""B"."#);
         assert!(errors.is_empty(), "{errors:?}");
-        let literals: Vec<&str> =
-            tokens.iter().filter(|t| t.kind == TokenKind::StringLiteral).map(|t| t.text).collect();
+        let literals: Vec<&str> = tokens
+            .iter()
+            .filter(|t| t.kind == TokenKind::StringLiteral)
+            .map(|t| t.text.as_str())
+            .collect();
         assert_eq!(literals, vec![r#""A""B""#]);
 
         let (tokens, errors) = scan(r#"VALUE 'A''B'."#);
         assert!(errors.is_empty(), "{errors:?}");
-        let literals: Vec<&str> =
-            tokens.iter().filter(|t| t.kind == TokenKind::StringLiteral).map(|t| t.text).collect();
+        let literals: Vec<&str> = tokens
+            .iter()
+            .filter(|t| t.kind == TokenKind::StringLiteral)
+            .map(|t| t.text.as_str())
+            .collect();
         assert_eq!(literals, vec!["'A''B'"]);
     }
 

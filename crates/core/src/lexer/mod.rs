@@ -16,11 +16,11 @@ pub mod fixed_format;
 pub mod scanner;
 pub mod token;
 
-pub fn lex(source: &str) -> (Vec<Token<'_>>, Vec<LexerError>) {
+pub fn lex(source: &str) -> (Vec<Token>, Vec<LexerError>) {
     let (logical_lines, mut errors) = preprocess(source);
     let mut tokens = Vec::new();
     for line in &logical_lines {
-        scan_line(line, source, &mut tokens, &mut errors);
+        scan_line(line, &mut tokens, &mut errors);
     }
     // EOF position is derived from the physical source so parser
     // diagnostics at end-of-file point at the real last line even when

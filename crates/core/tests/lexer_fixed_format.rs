@@ -5,7 +5,10 @@
 //! tracking, keyword detection, or error recovery in a single glance.
 
 use copyforge_core::error::LexerError;
-use copyforge_core::lexer::{lex, token::Token, token::TokenKind};
+use copyforge_core::lexer::{
+    lex,
+    token::{KeywordKind, Token, TokenKind},
+};
 
 fn render(source: &str) -> String {
     use std::fmt::Write;
@@ -73,8 +76,7 @@ fn column_72_truncation() {
     let (tokens, errors) = lex(&src);
     assert!(errors.is_empty(), "unexpected errors: {errors:?}");
 
-    let ident: Vec<&Token<'_>> =
-        tokens.iter().filter(|t| t.kind == TokenKind::Identifier).collect();
+    let ident: Vec<&Token> = tokens.iter().filter(|t| t.kind == TokenKind::Identifier).collect();
     assert_eq!(ident.len(), 1, "expected a single identifier token");
     assert_eq!(
         ident[0].text.len(),
@@ -107,6 +109,26 @@ fn eof_tracks_physical_line_count() {
     let eof = tokens.last().expect("eof token");
     assert_eq!(eof.kind, TokenKind::Eof);
     assert_eq!(eof.span.line, 4, "three physical lines plus trailing slot");
+}
+
+#[test]
+fn continued_keyword_is_classified_on_joined_text() {
+    // Splitting VALUE mid-keyword across a continuation boundary must
+    // still produce Keyword(Value). If the scanner classified on
+    // `source[span.start..span.end]` it would see
+    // `VA\n      -    LUE`, fail keyword lookup, and wrongly emit
+    // Identifier.
+    let src = "       05 A VA\n      -    LUE.\n";
+    let (tokens, errors) = lex(src);
+    assert!(errors.is_empty(), "{errors:?}");
+    let kinds: Vec<TokenKind> = tokens.iter().map(|t| t.kind).collect();
+    assert!(
+        kinds.contains(&TokenKind::Keyword(KeywordKind::Value)),
+        "expected Keyword(Value), got {kinds:?}"
+    );
+    let value_tok =
+        tokens.iter().find(|t| t.kind == TokenKind::Keyword(KeywordKind::Value)).unwrap();
+    assert_eq!(value_tok.text, "VALUE");
 }
 
 #[test]
@@ -165,6 +187,26 @@ fn orphan_continuation_first_line() {
 }
 
 #[test]
+fn continuation_across_comment_line_is_orphan() {
+    // An intervening comment must break the continuation chain —
+    // otherwise the `-` silently grafts `'WORLD'.` onto the prior
+    // statement, hiding both the open literal and the skipped comment.
+    let src = "       05 A VALUE 'HELLO\n      * COMMENT\n      -    'WORLD'.\n";
+    let (_, errors) = lex(src);
+    assert!(
+        errors
+            .iter()
+            .any(|e| matches!(e, LexerError::OrphanContinuation { span } if span.line == 3)),
+        "expected OrphanContinuation at line 3, got {errors:?}"
+    );
+    assert!(
+        errors.iter().any(|e| matches!(e, LexerError::UnterminatedStringLiteral { .. })),
+        "prior line's literal must still be flagged unterminated: {errors:?}"
+    );
+    insta::assert_snapshot!(render(src));
+}
+
+#[test]
 fn unterminated_literal_no_continuation() {
     // Line 1 opens a literal; line 2 is a normal-indicator line (no
     // `-`), so line 1's logical line stays unterminated and the
@@ -186,8 +228,11 @@ fn error_recovery() {
     let (tokens, errors) = lex(src);
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(matches!(errors[0], LexerError::InvalidCharacter { ch: '~', .. }));
-    let idents: Vec<&str> =
-        tokens.iter().filter(|t| t.kind == TokenKind::Identifier).map(|t| t.text).collect();
+    let idents: Vec<&str> = tokens
+        .iter()
+        .filter(|t| t.kind == TokenKind::Identifier)
+        .map(|t| t.text.as_str())
+        .collect();
     assert_eq!(idents, vec!["FOO", "BAR", "BAZ"]);
     insta::assert_snapshot!(render(src));
 }

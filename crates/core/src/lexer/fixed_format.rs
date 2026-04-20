@@ -146,6 +146,13 @@ pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
     let bytes = source.as_bytes();
     let mut pos = 0usize;
     let mut line_no: u32 = 1;
+    // True iff the immediately previous physical line is eligible to
+    // be continued: a normal code line or a successful `-` line.
+    // Comments, invalid indicators, null bytes, short lines, orphan
+    // `-`, and failed literal continuations all reset this to false so
+    // a later `-` cannot silently graft content onto an older
+    // statement across a dropped line.
+    let mut prev_continuable = false;
 
     while pos <= bytes.len() {
         let newline = bytes[pos..].iter().position(|&b| b == b'\n');
@@ -190,45 +197,65 @@ pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
                         segments: vec![segment],
                         start_line: line_no,
                     });
+                    prev_continuable = true;
                 }
-                b'*' | b'/' => {}
-                0 => errors.push(LexerError::EncounteredNullByte { span: col7_span }),
-                b'-' => match lines.last_mut() {
-                    None => errors.push(LexerError::OrphanContinuation { span: col7_span }),
-                    Some(prior) => {
-                        let area = &source[text_start..text_end];
-                        if let Some(open_quote) = ends_with_open_literal(&prior.text) {
-                            match area.bytes().position(|b| b == open_quote as u8) {
-                                Some(offset) => {
-                                    let keep_start = text_start + offset + 1;
-                                    if keep_start < text_end {
-                                        append_segment(
-                                            prior, source, keep_start, text_end, line_no, pos,
-                                        );
-                                    }
+                b'*' | b'/' => {
+                    prev_continuable = false;
+                }
+                0 => {
+                    errors.push(LexerError::EncounteredNullByte { span: col7_span });
+                    prev_continuable = false;
+                }
+                b'-' if !prev_continuable => {
+                    errors.push(LexerError::OrphanContinuation { span: col7_span });
+                    prev_continuable = false;
+                }
+                b'-' => {
+                    let prior =
+                        lines.last_mut().expect("prev_continuable implies a prior logical line");
+                    let area = &source[text_start..text_end];
+                    prev_continuable = if let Some(open_quote) = ends_with_open_literal(&prior.text)
+                    {
+                        match area.bytes().position(|b| b == open_quote as u8) {
+                            Some(offset) => {
+                                let keep_start = text_start + offset + 1;
+                                if keep_start < text_end {
+                                    append_segment(
+                                        prior, source, keep_start, text_end, line_no, pos,
+                                    );
                                 }
-                                None => {
-                                    errors.push(LexerError::ContinuationWithoutReopeningQuote {
-                                        expected: open_quote,
-                                        span: col7_span,
-                                    })
-                                }
+                                true
                             }
-                        } else {
-                            let first_non_ws = area
-                                .bytes()
-                                .position(|b| b != b' ' && b != b'\t')
-                                .unwrap_or(area.len());
-                            let keep_start = text_start + first_non_ws;
-                            if keep_start < text_end {
-                                append_segment(prior, source, keep_start, text_end, line_no, pos);
+                            None => {
+                                errors.push(LexerError::ContinuationWithoutReopeningQuote {
+                                    expected: open_quote,
+                                    span: col7_span,
+                                });
+                                false
                             }
                         }
-                    }
-                },
-                other => errors
-                    .push(LexerError::InvalidCharacter { ch: char::from(other), span: col7_span }),
+                    } else {
+                        let first_non_ws = area
+                            .bytes()
+                            .position(|b| b != b' ' && b != b'\t')
+                            .unwrap_or(area.len());
+                        let keep_start = text_start + first_non_ws;
+                        if keep_start < text_end {
+                            append_segment(prior, source, keep_start, text_end, line_no, pos);
+                        }
+                        true
+                    };
+                }
+                other => {
+                    errors.push(LexerError::InvalidCharacter {
+                        ch: char::from(other),
+                        span: col7_span,
+                    });
+                    prev_continuable = false;
+                }
             }
+        } else {
+            prev_continuable = false;
         }
 
         pos = next_pos;
@@ -356,6 +383,48 @@ mod tests {
             }
             other => panic!("expected ContinuationWithoutReopeningQuote, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn continuation_after_comment_is_orphan() {
+        // A comment between a continuable code line and a `-` line must
+        // break the chain; otherwise the continuation would silently
+        // graft onto the older statement, skipping the comment.
+        let src = format!(
+            "{}{}{}",
+            sample(' ', "05 A VALUE 'HELLO"),
+            sample('*', " COMMENT"),
+            sample('-', "    'WORLD'.")
+        );
+        let (lines, errors) = preprocess(&src);
+        assert_eq!(lines.len(), 1, "only the first code line should be logical");
+        // Logical line remains open (literal not reopened by a valid
+        // continuation), so the scanner's UnterminatedStringLiteral
+        // still fires downstream — the preprocessor only asserts the
+        // chain was broken here.
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(e, LexerError::OrphanContinuation { span } if span.line == 3)),
+            "expected OrphanContinuation at line 3, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn continuation_after_invalid_indicator_is_orphan() {
+        let src =
+            format!("{}{}{}", sample(' ', "05 A."), sample('X', " BAR."), sample('-', "    BAZ."));
+        let (_, errors) = preprocess(&src);
+        assert!(
+            errors.iter().any(|e| matches!(e, LexerError::InvalidCharacter { ch: 'X', .. })),
+            "expected InvalidCharacter 'X', got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(e, LexerError::OrphanContinuation { span } if span.line == 3)),
+            "expected OrphanContinuation at line 3, got {errors:?}"
+        );
     }
 
     #[test]

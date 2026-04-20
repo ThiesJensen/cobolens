@@ -2,16 +2,24 @@
 
 use crate::span::Span;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Token<'a> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
-    pub text: &'a str,
+    /// The joined logical content of the token.
+    ///
+    /// For tokens lying entirely within one source segment this matches
+    /// `source[span.start..span.end]`; for a token built from a
+    /// continuation chain it is the logical text after whitespace
+    /// stripping and quote reopening, not the raw bytes between the
+    /// span endpoints (which would include indicator columns and
+    /// newlines).
+    pub text: String,
 }
 
-impl<'a> Token<'a> {
-    pub const fn new(kind: TokenKind, span: Span, text: &'a str) -> Self {
-        Self { kind, span, text }
+impl Token {
+    pub fn new(kind: TokenKind, span: Span, text: impl Into<String>) -> Self {
+        Self { kind, span, text: text.into() }
     }
 }
 
