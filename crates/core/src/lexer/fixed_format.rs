@@ -14,7 +14,7 @@
 //! |-----------|---------------------------------------------------|
 //! | ` ` / `D` | Normal code (D = debug line, still treated as code) |
 //! | `*` / `/` | Comment / form-feed — entire line dropped          |
-//! | `-`       | Continuation — not yet supported, flagged as error |
+//! | `-`       | Continuation — text area appended to the prior logical line |
 //! | anything  | Invalid — flagged as error, line dropped           |
 //!
 //! Lines shorter than 8 bytes cannot carry code and are skipped
@@ -100,6 +100,46 @@ impl LogicalLine {
     }
 }
 
+/// Returns the opening quote character if `s` ends while still inside
+/// an unclosed string literal.
+///
+/// Follows COBOL's doubled-quote escape rule: `''` inside a `'`-literal
+/// (or `""` inside a `"`-literal) stands for a single embedded quote
+/// and does *not* close the literal. This mirrors the scanner's logos
+/// regex so that the preprocessor's notion of "line ends in an open
+/// literal" agrees with what the scanner would see.
+pub(super) fn ends_with_open_literal(s: &str) -> Option<char> {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    let mut inside: Option<u8> = None;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match inside {
+            None => {
+                if b == b'\'' || b == b'"' {
+                    inside = Some(b);
+                }
+                i += 1;
+            }
+            Some(q) => {
+                if b == q {
+                    // Doubled quote → escape, keep scanning inside.
+                    // A single quote with no partner closes the literal.
+                    if i + 1 < bytes.len() && bytes[i + 1] == q {
+                        i += 2;
+                    } else {
+                        inside = None;
+                        i += 1;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+        }
+    }
+    inside.map(|q| q as char)
+}
+
 pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
     let mut lines: Vec<LogicalLine> = Vec::new();
     let mut errors = Vec::new();
@@ -153,6 +193,26 @@ pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
                 }
                 b'*' | b'/' => {}
                 0 => errors.push(LexerError::EncounteredNullByte { span: col7_span }),
+                b'-' => match lines.last_mut() {
+                    None => errors.push(LexerError::OrphanContinuation { span: col7_span }),
+                    Some(prior) if ends_with_open_literal(&prior.text).is_some() => {
+                        // Literal continuation is handled in a follow-up
+                        // commit; until then, leave the literal open so the
+                        // scanner still sees it as unterminated.
+                        errors.push(LexerError::InvalidCharacter { ch: '-', span: col7_span });
+                    }
+                    Some(prior) => {
+                        let area = &source[text_start..text_end];
+                        let first_non_ws = area
+                            .bytes()
+                            .position(|b| b != b' ' && b != b'\t')
+                            .unwrap_or(area.len());
+                        let keep_start = text_start + first_non_ws;
+                        if keep_start < text_end {
+                            append_segment(prior, source, keep_start, text_end, line_no, pos);
+                        }
+                    }
+                },
                 other => errors
                     .push(LexerError::InvalidCharacter { ch: char::from(other), span: col7_span }),
             }
@@ -167,6 +227,30 @@ pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
     }
 
     (lines, errors)
+}
+
+/// Appends `source[keep_start..keep_end]` to `line`'s joined text and
+/// records a matching segment. `pos_of_phys_line` is the byte offset
+/// where the physical line being continued begins; columns are derived
+/// as `(keep_start - pos_of_phys_line) + 1`.
+fn append_segment(
+    line: &mut LogicalLine,
+    source: &str,
+    keep_start: usize,
+    keep_end: usize,
+    source_line: u32,
+    pos_of_phys_line: usize,
+) {
+    let logical_start = line.text.len();
+    let piece = &source[keep_start..keep_end];
+    line.text.push_str(piece);
+    line.segments.push(Segment {
+        logical_start,
+        source_start: keep_start,
+        len: piece.len(),
+        source_line,
+        source_col: (keep_start - pos_of_phys_line) as u32 + 1,
+    });
 }
 
 #[cfg(test)]
@@ -222,18 +306,38 @@ mod tests {
     }
 
     #[test]
-    fn continuation_indicator_produces_error_and_drops_content() {
-        let src = sample('-', "\"tail\"");
+    fn orphan_continuation_on_first_line_is_reported() {
+        let src = sample('-', "    TAIL.");
         let (lines, errors) = preprocess(&src);
         assert!(lines.is_empty());
         assert_eq!(errors.len(), 1);
         match &errors[0] {
-            LexerError::InvalidCharacter { ch, span } => {
-                assert_eq!(*ch, '-');
+            LexerError::OrphanContinuation { span } => {
                 assert_eq!(span.column, 7);
+                assert_eq!(span.line, 1);
             }
-            other => panic!("expected InvalidCharacter, got {other:?}"),
+            other => panic!("expected OrphanContinuation, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn non_literal_continuation_appends_stripped_text_as_new_segment() {
+        let src = format!("{}{}", sample(' ', "01 A "), sample('-', "   FOO."));
+        let (lines, errors) = preprocess(&src);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(lines.len(), 1);
+
+        let line = &lines[0];
+        assert_eq!(line.text, "01 A FOO.");
+        assert_eq!(line.segments.len(), 2);
+
+        let seg1 = &line.segments[1];
+        assert_eq!(seg1.logical_start, "01 A ".len());
+        assert_eq!(seg1.source_line, 2);
+        // Continuation text `FOO.` starts after 3 stripped spaces, so
+        // at col 8+3 = 11.
+        assert_eq!(seg1.source_col, 11);
+        assert_eq!(seg1.len, "FOO.".len());
     }
 
     #[test]
@@ -341,5 +445,41 @@ mod tests {
         let line = line_with_two_segments();
         let span = line.map_span(2..2);
         assert_eq!(span, Span::new(12, 12, 1, 10));
+    }
+
+    #[test]
+    fn ends_with_open_literal_tracks_single_quotes() {
+        assert_eq!(ends_with_open_literal(""), None);
+        assert_eq!(ends_with_open_literal("no quotes here"), None);
+        assert_eq!(ends_with_open_literal("'HELLO"), Some('\''));
+        assert_eq!(ends_with_open_literal("'HELLO'"), None);
+    }
+
+    #[test]
+    fn ends_with_open_literal_tracks_double_quotes() {
+        assert_eq!(ends_with_open_literal("\"HELLO"), Some('"'));
+        assert_eq!(ends_with_open_literal("\"HELLO\""), None);
+    }
+
+    #[test]
+    fn doubled_quotes_inside_literal_are_escapes_not_closers() {
+        // 'A''B' -> closed after escape. 'A''B -> still open.
+        assert_eq!(ends_with_open_literal("'A''B'"), None);
+        assert_eq!(ends_with_open_literal("'A''B"), Some('\''));
+
+        // Trailing doubled quote at end of buffer: the scanner treats it
+        // as "escape then unterminated", so we must say open too.
+        assert_eq!(ends_with_open_literal("'A''"), Some('\''));
+        assert_eq!(ends_with_open_literal("\"X\"\""), Some('"'));
+
+        // Three quotes -> open, escape, then unterminated.
+        assert_eq!(ends_with_open_literal("'''"), Some('\''));
+    }
+
+    #[test]
+    fn opposite_quote_inside_literal_is_plain_content() {
+        assert_eq!(ends_with_open_literal("'A\"B'"), None);
+        assert_eq!(ends_with_open_literal("\"A'B\""), None);
+        assert_eq!(ends_with_open_literal("'A\"B"), Some('\''));
     }
 }
