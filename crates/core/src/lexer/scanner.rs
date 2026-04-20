@@ -120,11 +120,12 @@ fn is_level_number(text: &str) -> bool {
 }
 
 fn span_for(line: &LogicalLine, local_start: usize, local_end: usize) -> Span {
+    let seg = &line.segments[0];
     Span::new(
-        line.base_offset + local_start,
-        line.base_offset + local_end,
-        line.line_no,
-        (local_start as u32).saturating_add(8),
+        seg.source_start + local_start,
+        seg.source_start + local_end,
+        seg.source_line,
+        seg.source_col + local_start as u32,
     )
 }
 
@@ -165,7 +166,18 @@ mod tests {
     use super::*;
 
     fn scan(text: &str) -> (Vec<Token<'_>>, Vec<LexerError>) {
-        let line = LogicalLine { text: text.to_string(), base_offset: 0, line_no: 1 };
+        use crate::lexer::fixed_format::Segment;
+        let line = LogicalLine {
+            text: text.to_string(),
+            segments: vec![Segment {
+                logical_start: 0,
+                source_start: 0,
+                len: text.len(),
+                source_line: 1,
+                source_col: 1,
+            }],
+            start_line: 1,
+        };
         let mut tokens = vec![];
         let mut errors = vec![];
         scan_line(&line, text, &mut tokens, &mut errors);

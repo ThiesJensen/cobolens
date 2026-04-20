@@ -25,19 +25,44 @@ use crate::span::Span;
 
 /// A single logical line of text ready for tokenisation.
 ///
-/// `text` is an owned copy of the cols-8-72 slice so the scanner can
-/// iterate it freely. `base_offset` is the byte position within the
-/// original source where `text[0]` lives; tokens add to this to
-/// reconstruct source-relative spans.
+/// `text` is the cols-8-72 slice of one physical line. Future PRs will
+/// extend this into a joined buffer built from multiple physical lines
+/// via the `-` continuation indicator; segments record where each piece
+/// of the joined text lives in the original source so a token that
+/// straddles physical lines can still be mapped back to an accurate
+/// span.
 #[derive(Debug, Clone)]
 pub struct LogicalLine {
     pub text: String,
-    pub base_offset: usize,
-    pub line_no: u32,
+    pub segments: Vec<Segment>,
+    pub start_line: u32,
+}
+
+/// Maps a contiguous region of `LogicalLine.text` back to its original
+/// position in the source file.
+///
+/// A segment always represents a contiguous slice of one physical line.
+/// A logical line with no continuation has exactly one segment covering
+/// the full text. With continuation, each extra physical line adds
+/// another segment.
+#[derive(Debug, Clone)]
+pub struct Segment {
+    /// Byte offset within `LogicalLine.text` where this segment starts.
+    pub logical_start: usize,
+    /// Byte offset within the original source where this segment's
+    /// first character lives.
+    pub source_start: usize,
+    /// Byte length of the segment (same in both logical and source
+    /// coordinates — segments never remap individual characters).
+    pub len: usize,
+    /// 1-indexed physical line number of this segment's first character.
+    pub source_line: u32,
+    /// 1-indexed physical column of this segment's first character.
+    pub source_col: u32,
 }
 
 pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
-    let mut lines = Vec::new();
+    let mut lines: Vec<LogicalLine> = Vec::new();
     let mut errors = Vec::new();
     let bytes = source.as_bytes();
     let mut pos = 0usize;
@@ -73,10 +98,18 @@ pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
             let col7_span = Span::new(pos + 6, pos + 7, line_no, 7);
             match indicator {
                 b' ' | b'D' | b'd' => {
+                    let text = &source[text_start..text_end];
+                    let segment = Segment {
+                        logical_start: 0,
+                        source_start: text_start,
+                        len: text.len(),
+                        source_line: line_no,
+                        source_col: 8,
+                    };
                     lines.push(LogicalLine {
-                        text: source[text_start..text_end].to_string(),
-                        base_offset: text_start,
-                        line_no,
+                        text: text.to_string(),
+                        segments: vec![segment],
+                        start_line: line_no,
                     });
                 }
                 b'*' | b'/' => {}
@@ -116,8 +149,14 @@ mod tests {
         assert!(errors.is_empty());
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].text, "01 FOO.");
-        assert_eq!(lines[0].base_offset, 7);
-        assert_eq!(lines[0].line_no, 1);
+        assert_eq!(lines[0].start_line, 1);
+        assert_eq!(lines[0].segments.len(), 1);
+        let seg = &lines[0].segments[0];
+        assert_eq!(seg.logical_start, 0);
+        assert_eq!(seg.source_start, 7);
+        assert_eq!(seg.len, "01 FOO.".len());
+        assert_eq!(seg.source_line, 1);
+        assert_eq!(seg.source_col, 8);
     }
 
     #[test]
@@ -132,7 +171,7 @@ mod tests {
         assert!(errors.is_empty());
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].text, "02 BAR.");
-        assert_eq!(lines[0].line_no, 3);
+        assert_eq!(lines[0].start_line, 3);
     }
 
     #[test]
