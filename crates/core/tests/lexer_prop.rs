@@ -12,39 +12,49 @@
 use copyforge_core::lexer::{lex, SourceFormat};
 use proptest::prelude::*;
 
+fn assert_spans_inside(source: &str, format: SourceFormat) -> Result<(), TestCaseError> {
+    let (tokens, _errors) = lex(source, format);
+    for t in &tokens {
+        prop_assert!(t.span.start <= t.span.end, "{t:?}");
+        prop_assert!(
+            source.get(t.span.start..t.span.end).is_some(),
+            "span {}..{} is not a valid slice of {}-byte source: {t:?}",
+            t.span.start,
+            t.span.end,
+            source.len()
+        );
+    }
+    Ok(())
+}
+
 proptest! {
     #[test]
-    fn ascii_input_never_panics_and_spans_stay_inside_source(
+    fn fixed_ascii_input_never_panics_and_spans_stay_inside_source(
         source in "[\\x00-\\x7f]{0,1024}"
     ) {
-        let (tokens, _errors) = lex(&source, SourceFormat::Fixed);
-        for t in &tokens {
-            prop_assert!(t.span.start <= t.span.end, "{t:?}");
-            prop_assert!(
-                source.get(t.span.start..t.span.end).is_some(),
-                "span {}..{} is not a valid slice of {}-byte source: {t:?}",
-                t.span.start,
-                t.span.end,
-                source.len()
-            );
-        }
+        assert_spans_inside(&source, SourceFormat::Fixed)?;
     }
 
     #[test]
-    fn multiline_spans_stay_inside_source(
+    fn fixed_multiline_spans_stay_inside_source(
         lines in proptest::collection::vec("[\\x00-\\x7f]{0,80}", 1..=10)
     ) {
         let source = lines.join("\n");
-        let (tokens, _errors) = lex(&source, SourceFormat::Fixed);
-        for t in &tokens {
-            prop_assert!(t.span.start <= t.span.end, "{t:?}");
-            prop_assert!(
-                source.get(t.span.start..t.span.end).is_some(),
-                "span {}..{} is not a valid slice of {}-byte source: {t:?}",
-                t.span.start,
-                t.span.end,
-                source.len()
-            );
-        }
+        assert_spans_inside(&source, SourceFormat::Fixed)?;
+    }
+
+    #[test]
+    fn free_ascii_input_never_panics_and_spans_stay_inside_source(
+        source in "[\\x00-\\x7f]{0,1024}"
+    ) {
+        assert_spans_inside(&source, SourceFormat::Free)?;
+    }
+
+    #[test]
+    fn free_multiline_spans_stay_inside_source(
+        lines in proptest::collection::vec("[\\x00-\\x7f]{0,80}", 1..=10)
+    ) {
+        let source = lines.join("\n");
+        assert_spans_inside(&source, SourceFormat::Free)?;
     }
 }
