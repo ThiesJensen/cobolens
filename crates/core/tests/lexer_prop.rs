@@ -27,4 +27,26 @@ proptest! {
             prop_assert_eq!(t.text, &source[t.span.start..t.span.end]);
         }
     }
+
+    /// Continuation lines let a single token span multiple physical
+    /// lines, so for multi-line input we relax the "text is the source
+    /// slice" check and assert the weaker — but still load-bearing —
+    /// invariant that every span still maps to a real byte range.
+    #[test]
+    fn multiline_spans_stay_inside_source(
+        lines in proptest::collection::vec("[\\x00-\\x7f]{0,80}", 1..=10)
+    ) {
+        let source = lines.join("\n");
+        let (tokens, _errors) = lex(&source);
+        for t in &tokens {
+            prop_assert!(t.span.start <= t.span.end, "{t:?}");
+            prop_assert!(
+                source.get(t.span.start..t.span.end).is_some(),
+                "span {}..{} is not a valid slice of {}-byte source: {t:?}",
+                t.span.start,
+                t.span.end,
+                source.len()
+            );
+        }
+    }
 }
