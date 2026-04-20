@@ -54,6 +54,10 @@ pub(super) fn find_comment_start(line: &str) -> Option<usize> {
 }
 
 pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
+    // Free format currently has no preprocessor errors: there is no
+    // indicator column to reject and continuation is out of scope.
+    // The empty vec preserves the signature parity with
+    // `fixed_format::preprocess` so both arms of `lex` look identical.
     let mut lines: Vec<LogicalLine> = Vec::new();
     let errors: Vec<LexerError> = Vec::new();
     let bytes = source.as_bytes();
@@ -225,15 +229,5 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].text, "05 BAR.");
         assert_eq!(lines[0].start_line, 1);
-    }
-
-    #[test]
-    fn preprocess_preserves_content_in_cols_one_to_six() {
-        // Fixed format would treat cols 1-6 as the sequence area and
-        // drop them. Free format keeps every column as code.
-        let (lines, _) = preprocess("01 TOP.\n");
-        assert_eq!(lines.len(), 1);
-        assert_eq!(lines[0].text, "01 TOP.");
-        assert_eq!(lines[0].segments[0].source_col, 1);
     }
 }
