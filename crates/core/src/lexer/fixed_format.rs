@@ -64,7 +64,12 @@ pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
         if line_len >= 8 {
             let indicator = bytes[pos + 6];
             let text_start = pos + 7;
-            let text_end = pos + line_len.min(72);
+            // Clamp to col 72 *and* walk back to a UTF-8 boundary so a
+            // multi-byte char straddling the cutoff does not split.
+            let mut text_end = pos + line_len.min(72);
+            while text_end > text_start && !source.is_char_boundary(text_end) {
+                text_end -= 1;
+            }
             let col7_span = Span::new(pos + 6, pos + 7, line_no, 7);
             match indicator {
                 b' ' | b'D' | b'd' => {
@@ -182,6 +187,20 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].text, "LINE1.");
         assert_eq!(lines[1].text, "LINE2.");
+    }
+
+    #[test]
+    fn multibyte_char_straddling_col_72_does_not_panic() {
+        let mut src = String::from("       "); // 7-col prefix
+        for _ in 0..64 {
+            src.push('X');
+        }
+        src.push('é'); // 2 bytes, crosses the byte-72 cutoff
+        src.push('\n');
+        let (lines, errors) = preprocess(&src);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].text.chars().count() <= 65);
     }
 
     #[test]
