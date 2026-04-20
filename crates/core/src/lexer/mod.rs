@@ -13,6 +13,7 @@ use crate::lexer::token::{Token, TokenKind};
 use crate::span::Span;
 
 pub mod fixed_format;
+pub mod free_format;
 pub mod scanner;
 pub mod token;
 
@@ -29,7 +30,7 @@ pub enum SourceFormat {
 pub fn lex(source: &str, format: SourceFormat) -> (Vec<Token>, Vec<LexerError>) {
     let (logical_lines, mut errors) = match format {
         SourceFormat::Fixed => fixed_format::preprocess(source),
-        SourceFormat::Free => todo!("free-format preprocessor lands in a follow-up commit"),
+        SourceFormat::Free => free_format::preprocess(source),
     };
     let mut tokens = Vec::new();
     for line in &logical_lines {
