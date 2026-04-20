@@ -12,3 +12,6 @@ authors.workspace      = true
 [dependencies]
 logos     = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }

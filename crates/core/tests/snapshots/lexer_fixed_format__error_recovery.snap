@@ -1,0 +1,16 @@
+---
+source: crates/core/tests/lexer_fixed_format.rs
+expression: render(src)
+---
+  1:8  LevelNumber(1)       "01"
+  1:11 Identifier           "FOO"
+  1:14 Period               "."
+  2:8  LevelNumber(5)       "05"
+  2:13 Identifier           "BAR"
+  2:16 Period               "."
+  3:8  LevelNumber(5)       "05"
+  3:11 Identifier           "BAZ"
+  3:14 Period               "."
+  4:1  Eof                  ""
+-- errors --
+InvalidCharacter { ch: '~', span: Span { start: 25, end: 26, line: 2, column: 11 } }

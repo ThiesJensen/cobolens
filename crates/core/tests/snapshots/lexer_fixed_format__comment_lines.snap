@@ -1,0 +1,13 @@
+---
+source: crates/core/tests/lexer_fixed_format.rs
+expression: render(src)
+---
+  2:8  LevelNumber(1)       "01"
+  2:11 Identifier           "LOOKUP"
+  2:17 Period               "."
+  4:11 LevelNumber(5)       "05"
+  4:14 Identifier           "ID"
+  4:18 Keyword(Pic)         "PIC"
+  4:22 PictureString        "X(8)"
+  4:26 Period               "."
+  5:1  Eof                  ""

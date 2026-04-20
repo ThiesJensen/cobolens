@@ -1,0 +1,8 @@
+---
+source: crates/core/tests/lexer_fixed_format.rs
+expression: render(src)
+---
+  1:8  LevelNumber(1)       "01"
+  1:11 Identifier           "CUSTOMER-RECORD"
+  1:26 Period               "."
+  2:1  Eof                  ""
