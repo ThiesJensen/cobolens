@@ -20,6 +20,8 @@
 //! Lines shorter than 8 bytes cannot carry code and are skipped
 //! silently. Bytes past column 72 are truncated without an error.
 
+use std::ops::Range;
+
 use crate::error::LexerError;
 use crate::span::Span;
 
@@ -59,6 +61,43 @@ pub struct Segment {
     pub source_line: u32,
     /// 1-indexed physical column of this segment's first character.
     pub source_col: u32,
+}
+
+impl LogicalLine {
+    /// Map a byte range within `self.text` back to a `Span` in the
+    /// original source.
+    ///
+    /// The span's `start` / `end` are the original byte offsets of the
+    /// first and one-past-the-last characters the range covers. `line`
+    /// and `column` refer to the first character. An empty range yields
+    /// an empty span pointing at the position of `range.start`.
+    pub fn map_span(&self, range: Range<usize>) -> Span {
+        let start_seg = self.segment_for(range.start);
+        let start_delta = range.start - start_seg.logical_start;
+        let source_start = start_seg.source_start + start_delta;
+        let line = start_seg.source_line;
+        let column = start_seg.source_col + start_delta as u32;
+
+        let source_end = if range.end == range.start {
+            source_start
+        } else {
+            let last_logical = range.end - 1;
+            let end_seg = self.segment_for(last_logical);
+            end_seg.source_start + (last_logical - end_seg.logical_start) + 1
+        };
+
+        Span::new(source_start, source_end, line, column)
+    }
+
+    fn segment_for(&self, logical_offset: usize) -> &Segment {
+        // Segments are sorted by logical_start and non-overlapping, so a
+        // linear scan is fine — logical lines rarely hold more than two
+        // or three segments in practice.
+        self.segments
+            .iter()
+            .rfind(|s| logical_offset >= s.logical_start)
+            .expect("LogicalLine has at least one segment")
+    }
 }
 
 pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
@@ -248,5 +287,59 @@ mod tests {
         let (_, errors) = preprocess(src);
         assert_eq!(errors.len(), 1);
         assert!(matches!(errors[0], LexerError::EncounteredNullByte { .. }));
+    }
+
+    fn line_with_two_segments() -> LogicalLine {
+        // text "ABCXYZ" where "ABC" is segment 0 (source 10, line 1 col 8)
+        // and "XYZ" is segment 1 (source 40, line 2 col 12).
+        LogicalLine {
+            text: "ABCXYZ".to_string(),
+            segments: vec![
+                Segment {
+                    logical_start: 0,
+                    source_start: 10,
+                    len: 3,
+                    source_line: 1,
+                    source_col: 8,
+                },
+                Segment {
+                    logical_start: 3,
+                    source_start: 40,
+                    len: 3,
+                    source_line: 2,
+                    source_col: 12,
+                },
+            ],
+            start_line: 1,
+        }
+    }
+
+    #[test]
+    fn map_span_within_single_segment() {
+        let line = line_with_two_segments();
+        let span = line.map_span(0..3);
+        assert_eq!(span, Span::new(10, 13, 1, 8));
+
+        let mid = line.map_span(1..3);
+        assert_eq!(mid, Span::new(11, 13, 1, 9));
+
+        let seg1 = line.map_span(3..6);
+        assert_eq!(seg1, Span::new(40, 43, 2, 12));
+    }
+
+    #[test]
+    fn map_span_across_segments_picks_outer_endpoints() {
+        let line = line_with_two_segments();
+        let span = line.map_span(1..5);
+        // start is inside seg0 at offset 1 → source 11, col 9
+        // last char is at logical 4 → seg1 offset 1 → source 41; end = 42
+        assert_eq!(span, Span::new(11, 42, 1, 9));
+    }
+
+    #[test]
+    fn map_span_empty_range_yields_empty_span() {
+        let line = line_with_two_segments();
+        let span = line.map_span(2..2);
+        assert_eq!(span, Span::new(12, 12, 1, 10));
     }
 }

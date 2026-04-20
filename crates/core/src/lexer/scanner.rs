@@ -17,7 +17,6 @@ use logos::Logos;
 use crate::error::LexerError;
 use crate::lexer::fixed_format::LogicalLine;
 use crate::lexer::token::{match_keyword, KeywordKind, Token, TokenKind};
-use crate::span::Span;
 
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq)]
 #[logos(skip r"[ \t]+")]
@@ -70,7 +69,7 @@ pub(crate) fn scan_line<'a>(
 
     while let Some(result) = lex.next() {
         let local = lex.span();
-        let span = span_for(line, local.start, local.end);
+        let span = line.map_span(local.clone());
         let text = &source[span.start..span.end];
 
         match result {
@@ -119,16 +118,6 @@ fn is_level_number(text: &str) -> bool {
     text.len() == 2 && text.as_bytes().iter().all(u8::is_ascii_digit)
 }
 
-fn span_for(line: &LogicalLine, local_start: usize, local_end: usize) -> Span {
-    let seg = &line.segments[0];
-    Span::new(
-        seg.source_start + local_start,
-        seg.source_start + local_end,
-        seg.source_line,
-        seg.source_col + local_start as u32,
-    )
-}
-
 fn capture_picture_string<'a>(
     lex: &mut logos::Lexer<'_, RawToken>,
     line: &LogicalLine,
@@ -155,7 +144,7 @@ fn capture_picture_string<'a>(
     }
 
     let cursor = lex.source().len() - rem.len();
-    let span = span_for(line, cursor, cursor + end_idx);
+    let span = line.map_span(cursor..cursor + end_idx);
     let text = &source[span.start..span.end];
     tokens.push(Token::new(TokenKind::PictureString, span, text));
     lex.bump(end_idx);
