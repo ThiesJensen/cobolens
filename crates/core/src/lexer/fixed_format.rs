@@ -195,21 +195,34 @@ pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
                 0 => errors.push(LexerError::EncounteredNullByte { span: col7_span }),
                 b'-' => match lines.last_mut() {
                     None => errors.push(LexerError::OrphanContinuation { span: col7_span }),
-                    Some(prior) if ends_with_open_literal(&prior.text).is_some() => {
-                        // Literal continuation is handled in a follow-up
-                        // commit; until then, leave the literal open so the
-                        // scanner still sees it as unterminated.
-                        errors.push(LexerError::InvalidCharacter { ch: '-', span: col7_span });
-                    }
                     Some(prior) => {
                         let area = &source[text_start..text_end];
-                        let first_non_ws = area
-                            .bytes()
-                            .position(|b| b != b' ' && b != b'\t')
-                            .unwrap_or(area.len());
-                        let keep_start = text_start + first_non_ws;
-                        if keep_start < text_end {
-                            append_segment(prior, source, keep_start, text_end, line_no, pos);
+                        if let Some(open_quote) = ends_with_open_literal(&prior.text) {
+                            match area.bytes().position(|b| b == open_quote as u8) {
+                                Some(offset) => {
+                                    let keep_start = text_start + offset + 1;
+                                    if keep_start < text_end {
+                                        append_segment(
+                                            prior, source, keep_start, text_end, line_no, pos,
+                                        );
+                                    }
+                                }
+                                None => {
+                                    errors.push(LexerError::ContinuationWithoutReopeningQuote {
+                                        expected: open_quote,
+                                        span: col7_span,
+                                    })
+                                }
+                            }
+                        } else {
+                            let first_non_ws = area
+                                .bytes()
+                                .position(|b| b != b' ' && b != b'\t')
+                                .unwrap_or(area.len());
+                            let keep_start = text_start + first_non_ws;
+                            if keep_start < text_end {
+                                append_segment(prior, source, keep_start, text_end, line_no, pos);
+                            }
                         }
                     }
                 },
@@ -317,6 +330,31 @@ mod tests {
                 assert_eq!(span.line, 1);
             }
             other => panic!("expected OrphanContinuation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn literal_continuation_skips_reopening_quote() {
+        let src = format!("{}{}", sample(' ', "VALUE 'HELLO"), sample('-', "    'WORLD'."));
+        let (lines, errors) = preprocess(&src);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text, "VALUE 'HELLOWORLD'.");
+        assert_eq!(lines[0].segments.len(), 2);
+    }
+
+    #[test]
+    fn literal_continuation_without_reopening_quote_is_reported() {
+        let src = format!("{}{}", sample(' ', "VALUE 'HELLO"), sample('-', "   missing."));
+        let (_, errors) = preprocess(&src);
+        assert_eq!(errors.len(), 1);
+        match &errors[0] {
+            LexerError::ContinuationWithoutReopeningQuote { expected, span } => {
+                assert_eq!(*expected, '\'');
+                assert_eq!(span.line, 2);
+                assert_eq!(span.column, 7);
+            }
+            other => panic!("expected ContinuationWithoutReopeningQuote, got {other:?}"),
         }
     }
 
