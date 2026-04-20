@@ -1,0 +1,11 @@
+---
+source: crates/core/tests/lexer_fixed_format.rs
+assertion_line: 164
+expression: render(src)
+---
+  2:8  LevelNumber(5)       "05"
+  2:11 Identifier           "A"
+  2:12 Period               "."
+  3:1  Eof                  ""
+-- errors --
+OrphanContinuation { span: Span { start: 6, end: 7, line: 1, column: 7 } }

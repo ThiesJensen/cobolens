@@ -19,6 +19,12 @@ pub enum LexerError {
 
     #[error("null byte encountered in source")]
     EncounteredNullByte { span: Span },
+
+    #[error("continuation line does not reopen {expected:?}-quoted literal")]
+    ContinuationWithoutReopeningQuote { expected: char, span: Span },
+
+    #[error("continuation indicator with no prior line to continue")]
+    OrphanContinuation { span: Span },
 }
 
 impl LexerError {
@@ -26,7 +32,9 @@ impl LexerError {
         match self {
             Self::UnterminatedStringLiteral { span }
             | Self::InvalidCharacter { span, .. }
-            | Self::EncounteredNullByte { span } => *span,
+            | Self::EncounteredNullByte { span }
+            | Self::ContinuationWithoutReopeningQuote { span, .. }
+            | Self::OrphanContinuation { span } => *span,
         }
     }
 }

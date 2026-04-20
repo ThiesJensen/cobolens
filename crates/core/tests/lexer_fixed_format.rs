@@ -110,6 +110,75 @@ fn eof_tracks_physical_line_count() {
 }
 
 #[test]
+fn continuation_keyword() {
+    let src = include_str!("../../../fixtures/simple/continuation-keyword.cpy");
+    insta::assert_snapshot!(render(src));
+}
+
+#[test]
+fn continuation_literal_same_quote() {
+    let src = include_str!("../../../fixtures/simple/continuation-literal.cpy");
+    insta::assert_snapshot!(render(src));
+}
+
+#[test]
+fn continuation_literal_double_quote() {
+    let src = "       05 A VALUE \"HELLO\n      -    \"WORLD\".\n";
+    insta::assert_snapshot!(render(src));
+}
+
+#[test]
+fn continuation_chain_three_lines() {
+    let src = include_str!("../../../fixtures/simple/continuation-chain.cpy");
+    insta::assert_snapshot!(render(src));
+}
+
+#[test]
+fn continuation_missing_reopen() {
+    // Line 1 opens a literal; line 2's continuation text area has no
+    // matching quote, so the preprocessor emits
+    // ContinuationWithoutReopeningQuote instead of appending garbage.
+    let src = "       05 A VALUE 'HELLO\n      -    missing.\n";
+    let (_, errors) = lex(src);
+    assert!(
+        errors.iter().any(|e| matches!(
+            e,
+            LexerError::ContinuationWithoutReopeningQuote { expected: '\'', .. }
+        )),
+        "expected ContinuationWithoutReopeningQuote, got {errors:?}"
+    );
+    insta::assert_snapshot!(render(src));
+}
+
+#[test]
+fn orphan_continuation_first_line() {
+    // `-` indicator on the very first physical line has no predecessor
+    // to continue; the preprocessor reports OrphanContinuation and
+    // drops the line.
+    let src = "      -    NEXT.\n       05 A.\n";
+    let (_, errors) = lex(src);
+    assert!(
+        errors.iter().any(|e| matches!(e, LexerError::OrphanContinuation { .. })),
+        "expected OrphanContinuation, got {errors:?}"
+    );
+    insta::assert_snapshot!(render(src));
+}
+
+#[test]
+fn unterminated_literal_no_continuation() {
+    // Line 1 opens a literal; line 2 is a normal-indicator line (no
+    // `-`), so line 1's logical line stays unterminated and the
+    // scanner's existing UnterminatedStringLiteral error fires.
+    let src = "       05 A VALUE 'HELLO\n       05 B.\n";
+    let (_, errors) = lex(src);
+    assert!(
+        errors.iter().any(|e| matches!(e, LexerError::UnterminatedStringLiteral { .. })),
+        "expected UnterminatedStringLiteral, got {errors:?}"
+    );
+    insta::assert_snapshot!(render(src));
+}
+
+#[test]
 fn error_recovery() {
     // '~' is not a valid COBOL character; the lexer must record the
     // error and keep emitting tokens from surrounding lines.

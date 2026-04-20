@@ -1,0 +1,14 @@
+---
+source: crates/core/tests/lexer_fixed_format.rs
+assertion_line: 178
+expression: render(src)
+---
+  1:8  LevelNumber(5)       "05"
+  1:11 Identifier           "A"
+  1:13 Keyword(Value)       "VALUE"
+  2:8  LevelNumber(5)       "05"
+  2:11 Identifier           "B"
+  2:12 Period               "."
+  3:1  Eof                  ""
+-- errors --
+UnterminatedStringLiteral { span: Span { start: 18, end: 24, line: 1, column: 19 } }
