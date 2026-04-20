@@ -1,0 +1,44 @@
+# Rust
+/target
+**/*.rs.bk
+*.pdb
+
+
+/docs/
+
+# IDE / editors
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage / fuzz / bench
+/coverage/
+/target-cov/
+/fuzz/corpus/
+/fuzz/artifacts/
+/criterion-reports/
+/lcov.info
+/*.profraw
+/*.profdata
+
+# Build outputs for bindings
+/bindings/node/*.node
+/bindings/node/dist/
+/bindings/python/dist/
+/bindings/python/build/
+/bindings/python/*.egg-info/
+/crates/wasm/pkg/
+
+# Env / local config
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
