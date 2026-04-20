@@ -1,0 +1,24 @@
+---
+source: crates/core/tests/lexer_fixed_format.rs
+expression: render(src)
+---
+  1:8  LevelNumber(1)       "01"
+  1:11 Identifier           "ACCOUNT"
+  1:18 Period               "."
+  2:11 LevelNumber(5)       "05"
+  2:14 Identifier           "BALANCE"
+  2:23 Keyword(Pic)         "PIC"
+  2:27 PictureString        "9(4)V99"
+  2:34 Period               "."
+  3:11 LevelNumber(5)       "05"
+  3:14 Identifier           "NAME"
+  3:23 Keyword(Pic)         "PIC"
+  3:27 PictureString        "X(10)"
+  3:32 Period               "."
+  4:11 LevelNumber(5)       "05"
+  4:14 Identifier           "SIGNED"
+  4:23 Keyword(Pic)         "PIC"
+  4:27 PictureString        "S9(7)"
+  4:33 Keyword(Comp3)       "COMP-3"
+  4:39 Period               "."
+  5:1  Eof                  ""
