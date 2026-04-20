@@ -1,11 +1,11 @@
 ---
 source: crates/core/tests/lexer_fixed_format.rs
-assertion_line: 133
+assertion_line: 157
 expression: render(src)
 ---
   1:8  LevelNumber(5)       "05"
   1:11 Identifier           "A"
   1:13 Keyword(Value)       "VALUE"
-  1:19 StringLiteral        "'AAA\n      -    'BBB\n      -    'CCC'"
+  1:19 StringLiteral        "'AAABBBCCC'"
   3:17 Period               "."
   4:1  Eof                  ""
