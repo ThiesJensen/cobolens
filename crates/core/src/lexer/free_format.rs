@@ -58,7 +58,7 @@ pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
     // indicator column to reject and continuation is out of scope.
     // The empty vec preserves the signature parity with
     // `fixed_format::preprocess` so both arms of `lex` look identical.
-    let mut lines: Vec<LogicalLine> = Vec::new();
+    let mut lines = Vec::new();
     let errors: Vec<LexerError> = Vec::new();
     let bytes = source.as_bytes();
     let mut pos = 0usize;

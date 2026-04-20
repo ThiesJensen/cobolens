@@ -5,11 +5,7 @@
 //! span columns, or comment stripping is immediately visible.
 
 use copyforge_core::error::LexerError;
-use copyforge_core::lexer::{
-    lex,
-    token::{Token, TokenKind},
-    SourceFormat,
-};
+use copyforge_core::lexer::{lex, token::TokenKind, SourceFormat};
 
 fn render(source: &str) -> String {
     use std::fmt::Write;
@@ -69,8 +65,7 @@ fn long_line_not_truncated() {
     let src = format!("{ident}.\n");
     let (tokens, errors) = lex(&src, SourceFormat::Free);
     assert!(errors.is_empty(), "{errors:?}");
-    let id: &Token =
-        tokens.iter().find(|t| t.kind == TokenKind::Identifier).expect("identifier token");
+    let id = tokens.iter().find(|t| t.kind == TokenKind::Identifier).expect("identifier token");
     assert_eq!(id.text.len(), 100);
     assert_eq!(id.span.column, 1);
 }
