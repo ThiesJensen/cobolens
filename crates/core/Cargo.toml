@@ -1,0 +1,10 @@
+[package]
+name        = "copyforge-core"
+description = "Copybook parser and intermediate representation for copyforge."
+
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+authors.workspace      = true
