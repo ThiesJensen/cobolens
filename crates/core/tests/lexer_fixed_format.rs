@@ -187,6 +187,26 @@ fn orphan_continuation_first_line() {
 }
 
 #[test]
+fn continuation_across_comment_line_is_orphan() {
+    // An intervening comment must break the continuation chain —
+    // otherwise the `-` silently grafts `'WORLD'.` onto the prior
+    // statement, hiding both the open literal and the skipped comment.
+    let src = "       05 A VALUE 'HELLO\n      * COMMENT\n      -    'WORLD'.\n";
+    let (_, errors) = lex(src);
+    assert!(
+        errors
+            .iter()
+            .any(|e| matches!(e, LexerError::OrphanContinuation { span } if span.line == 3)),
+        "expected OrphanContinuation at line 3, got {errors:?}"
+    );
+    assert!(
+        errors.iter().any(|e| matches!(e, LexerError::UnterminatedStringLiteral { .. })),
+        "prior line's literal must still be flagged unterminated: {errors:?}"
+    );
+    insta::assert_snapshot!(render(src));
+}
+
+#[test]
 fn unterminated_literal_no_continuation() {
     // Line 1 opens a literal; line 2 is a normal-indicator line (no
     // `-`), so line 1's logical line stays unterminated and the
