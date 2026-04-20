@@ -7,4 +7,5 @@
 //! depend on it without pulling in TypeScript, Python, or Rust emitters.
 
 pub mod error;
+pub mod lexer;
 pub mod span;
