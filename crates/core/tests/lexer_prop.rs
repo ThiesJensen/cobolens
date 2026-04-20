@@ -9,7 +9,7 @@
 //! content, not the raw source slice, is what keyword lookup and
 //! parser logic need.
 
-use copyforge_core::lexer::lex;
+use copyforge_core::lexer::{lex, SourceFormat};
 use proptest::prelude::*;
 
 proptest! {
@@ -17,7 +17,7 @@ proptest! {
     fn ascii_input_never_panics_and_spans_stay_inside_source(
         source in "[\\x00-\\x7f]{0,1024}"
     ) {
-        let (tokens, _errors) = lex(&source);
+        let (tokens, _errors) = lex(&source, SourceFormat::Fixed);
         for t in &tokens {
             prop_assert!(t.span.start <= t.span.end, "{t:?}");
             prop_assert!(
@@ -35,7 +35,7 @@ proptest! {
         lines in proptest::collection::vec("[\\x00-\\x7f]{0,80}", 1..=10)
     ) {
         let source = lines.join("\n");
-        let (tokens, _errors) = lex(&source);
+        let (tokens, _errors) = lex(&source, SourceFormat::Fixed);
         for t in &tokens {
             prop_assert!(t.span.start <= t.span.end, "{t:?}");
             prop_assert!(
