@@ -6,4 +6,5 @@
 //! dependency on any codegen target, so downstream analysis tools can
 //! depend on it without pulling in TypeScript, Python, or Rust emitters.
 
+pub mod error;
 pub mod span;
