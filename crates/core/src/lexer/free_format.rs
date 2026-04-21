@@ -88,7 +88,14 @@ pub fn preprocess(source: &str) -> (Vec<LogicalLine>, Vec<LexerError>) {
         };
         let text = &source[pos..text_end];
 
-        if !text.trim().is_empty() {
+        // Directive lines (`>>SOURCE FORMAT IS FREE`, debug prefix
+        // `>>D`, dialect-specific `>>CALL-CONVENTION`, ...) are
+        // tolerated as no-ops here: they carry no data-division
+        // content, so dropping them keeps the scanner from tripping
+        // over the leading `>>` as invalid characters. Routing of
+        // directive semantics lives in a later PR.
+        let trimmed = text.trim_start();
+        if !trimmed.is_empty() && !trimmed.starts_with(">>") {
             lines.push(LogicalLine {
                 text: text.to_string(),
                 segments: vec![Segment {
@@ -201,6 +208,30 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].text, "05 FOO.");
         assert_eq!(lines[0].start_line, 4);
+    }
+
+    #[test]
+    fn preprocess_skips_source_format_directive() {
+        let (lines, errors) = preprocess(">>SOURCE FORMAT IS FREE\n01 FOO.\n");
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text, "01 FOO.");
+        assert_eq!(lines[0].start_line, 2);
+    }
+
+    #[test]
+    fn preprocess_skips_debug_line_prefix() {
+        let (lines, errors) = preprocess("01 X.\n>>D DISPLAY 'X'.\n");
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text, "01 X.");
+    }
+
+    #[test]
+    fn preprocess_directive_tolerates_leading_whitespace() {
+        let (lines, _) = preprocess("   >>FOO BAR\n01 X.\n");
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text, "01 X.");
     }
 
     #[test]

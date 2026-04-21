@@ -110,6 +110,22 @@ fn eof_tracks_physical_line_count() {
     assert_eq!(eof.span.line, 4);
 }
 
+#[test]
+fn directives_do_not_leak_into_token_stream() {
+    // A free-format file may legitimately carry `>>SOURCE FORMAT IS
+    // FREE` at the top and `>>D` debug-line prefixes elsewhere. The
+    // preprocessor drops these so the scanner neither sees `>>` as
+    // invalid characters nor exposes the directive words as tokens.
+    let src = ">>SOURCE FORMAT IS FREE\n01 FOO.\n>>D DISPLAY 'X'.\n";
+    let (tokens, errors) = lex(src, SourceFormat::Free);
+    assert!(errors.is_empty(), "{errors:?}");
+    let kinds: Vec<TokenKind> = tokens.iter().map(|t| t.kind).collect();
+    assert_eq!(
+        kinds,
+        vec![TokenKind::LevelNumber(1), TokenKind::Identifier, TokenKind::Period, TokenKind::Eof]
+    );
+}
+
 /// Asserts that the same logical source lexes to the same TokenKind
 /// sequence under both formats. Only kinds are compared — spans differ
 /// because the fixed variant carries a 7-column prefix, and that is
