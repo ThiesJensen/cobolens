@@ -31,7 +31,8 @@ check-identity:
     ./.claude/check-identity.sh
 
 # Full local gate — run before every push
-pre-push: fmt-check lint test check-identity
+pre-push: fmt-check lint test
+    ./.claude/check-identity.sh --range="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || echo origin/main)..HEAD"
     @echo "pre-push: all checks passed"
 
 # Clean build artifacts
