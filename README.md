@@ -14,3 +14,15 @@ Dual-licensed under either of
 - [Apache License, Version 2.0](LICENSE-APACHE)
 
 at your option.
+
+## Development
+
+Requires Rust 1.80.0 and [just](https://github.com/casey/just).
+
+Common tasks:
+
+    just          # list recipes
+    just test     # run tests
+    just lint     # clippy, warnings-as-errors
+    just pre-push # full local gate before pushing
+
