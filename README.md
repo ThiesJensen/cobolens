@@ -26,3 +26,7 @@ Common tasks:
     just lint     # clippy, warnings-as-errors
     just pre-push # full local gate before pushing
 
+Snapshot review (`just snap` / `just snap-accept`) additionally requires [cargo-insta](https://insta.rs):
+
+    cargo install cargo-insta
+
