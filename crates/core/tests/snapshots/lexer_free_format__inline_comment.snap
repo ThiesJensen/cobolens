@@ -1,0 +1,18 @@
+---
+source: crates/core/tests/lexer_free_format.rs
+expression: render(src)
+---
+  1:1  LevelNumber(1)       "01"
+  1:4  Identifier           "ADDRESS-RECORD"
+  1:18 Period               "."
+  2:4  LevelNumber(5)       "05"
+  2:7  Identifier           "STREET"
+  2:21 Keyword(Pic)         "PIC"
+  2:25 PictureString        "X(30)"
+  2:30 Period               "."
+  3:4  LevelNumber(5)       "05"
+  3:7  Identifier           "CITY"
+  3:21 Keyword(Pic)         "PIC"
+  3:25 PictureString        "X(20)"
+  3:30 Period               "."
+  4:1  Eof                  ""

@@ -1,0 +1,10 @@
+---
+source: crates/core/tests/lexer_free_format.rs
+expression: render(src)
+---
+  1:1  LevelNumber(5)       "05"
+  1:4  Identifier           "A"
+  1:6  Keyword(Value)       "VALUE"
+  1:12 StringLiteral        "'*> not a comment'"
+  1:30 Period               "."
+  2:1  Eof                  ""

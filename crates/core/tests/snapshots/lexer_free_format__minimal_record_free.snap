@@ -1,0 +1,24 @@
+---
+source: crates/core/tests/lexer_free_format.rs
+expression: render(src)
+---
+  1:1  LevelNumber(1)       "01"
+  1:4  Identifier           "CUSTOMER-RECORD"
+  1:19 Period               "."
+  2:4  LevelNumber(5)       "05"
+  2:7  Identifier           "CUSTOMER-ID"
+  2:22 Keyword(Pic)         "PIC"
+  2:26 PictureString        "9(8)"
+  2:30 Period               "."
+  3:4  LevelNumber(5)       "05"
+  3:7  Identifier           "CUSTOMER-NAME"
+  3:22 Keyword(Pic)         "PIC"
+  3:26 PictureString        "X(30)"
+  3:31 Period               "."
+  4:4  LevelNumber(5)       "05"
+  4:7  Identifier           "BALANCE"
+  4:22 Keyword(Pic)         "PIC"
+  4:26 PictureString        "S9(7)V99"
+  4:35 Keyword(Comp3)       "COMP-3"
+  4:41 Period               "."
+  5:1  Eof                  ""

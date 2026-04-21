@@ -1,23 +1,37 @@
 //! Lexical analysis of COBOL copybook source.
 //!
-//! Today the lexer handles fixed-format input without continuation
-//! lines. Free format and continuation (`-` indicator) land in
-//! follow-up PRs. The public surface is deliberately tiny: one free
-//! function `lex`, returning both the accumulated tokens and every
-//! error seen along the way.
+//! Two physical-line layouts are supported: the traditional fixed-format
+//! card image (cols 1-6 sequence, col 7 indicator, cols 8-72 code) and
+//! COBOL 2002 free format (every column is code, inline comments start
+//! with `*>`). The caller picks the layout via [`SourceFormat`]; the
+//! format-specific preprocessor produces `LogicalLine`s, after which the
+//! scanner is format-agnostic.
 
 use crate::error::LexerError;
-use crate::lexer::fixed_format::preprocess;
 use crate::lexer::scanner::scan_line;
 use crate::lexer::token::{Token, TokenKind};
 use crate::span::Span;
 
 pub mod fixed_format;
+pub mod free_format;
 pub mod scanner;
 pub mod token;
 
-pub fn lex(source: &str) -> (Vec<Token>, Vec<LexerError>) {
-    let (logical_lines, mut errors) = preprocess(source);
+/// Selects the physical-line layout of the input.
+///
+/// The scanner itself is the same for both variants; only the
+/// pre-scanning pass differs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceFormat {
+    Fixed,
+    Free,
+}
+
+pub fn lex(source: &str, format: SourceFormat) -> (Vec<Token>, Vec<LexerError>) {
+    let (logical_lines, mut errors) = match format {
+        SourceFormat::Fixed => fixed_format::preprocess(source),
+        SourceFormat::Free => free_format::preprocess(source),
+    };
     let mut tokens = Vec::new();
     for line in &logical_lines {
         scan_line(line, &mut tokens, &mut errors);

@@ -8,11 +8,12 @@ use copyforge_core::error::LexerError;
 use copyforge_core::lexer::{
     lex,
     token::{KeywordKind, Token, TokenKind},
+    SourceFormat,
 };
 
 fn render(source: &str) -> String {
     use std::fmt::Write;
-    let (tokens, errors) = lex(source);
+    let (tokens, errors) = lex(source, SourceFormat::Fixed);
     let mut out = String::new();
     for t in &tokens {
         writeln!(
@@ -73,7 +74,7 @@ fn column_72_truncation() {
     }
     src.push('\n');
 
-    let (tokens, errors) = lex(&src);
+    let (tokens, errors) = lex(&src, SourceFormat::Fixed);
     assert!(errors.is_empty(), "unexpected errors: {errors:?}");
 
     let ident: Vec<&Token> = tokens.iter().filter(|t| t.kind == TokenKind::Identifier).collect();
@@ -105,7 +106,7 @@ fn eof_tracks_physical_line_count() {
     // EOF must reflect the physical end of the file so parser
     // diagnostics reported at EOF land on the right line.
     let src = "      * only comment\n      * another comment\n      * and one more\n";
-    let (tokens, _) = lex(src);
+    let (tokens, _) = lex(src, SourceFormat::Fixed);
     let eof = tokens.last().expect("eof token");
     assert_eq!(eof.kind, TokenKind::Eof);
     assert_eq!(eof.span.line, 4, "three physical lines plus trailing slot");
@@ -119,7 +120,7 @@ fn continued_keyword_is_classified_on_joined_text() {
     // `VA\n      -    LUE`, fail keyword lookup, and wrongly emit
     // Identifier.
     let src = "       05 A VA\n      -    LUE.\n";
-    let (tokens, errors) = lex(src);
+    let (tokens, errors) = lex(src, SourceFormat::Fixed);
     assert!(errors.is_empty(), "{errors:?}");
     let kinds: Vec<TokenKind> = tokens.iter().map(|t| t.kind).collect();
     assert!(
@@ -161,7 +162,7 @@ fn continuation_missing_reopen() {
     // matching quote, so the preprocessor emits
     // ContinuationWithoutReopeningQuote instead of appending garbage.
     let src = "       05 A VALUE 'HELLO\n      -    missing.\n";
-    let (_, errors) = lex(src);
+    let (_, errors) = lex(src, SourceFormat::Fixed);
     assert!(
         errors.iter().any(|e| matches!(
             e,
@@ -178,7 +179,7 @@ fn orphan_continuation_first_line() {
     // to continue; the preprocessor reports OrphanContinuation and
     // drops the line.
     let src = "      -    NEXT.\n       05 A.\n";
-    let (_, errors) = lex(src);
+    let (_, errors) = lex(src, SourceFormat::Fixed);
     assert!(
         errors.iter().any(|e| matches!(e, LexerError::OrphanContinuation { .. })),
         "expected OrphanContinuation, got {errors:?}"
@@ -192,7 +193,7 @@ fn continuation_across_comment_line_is_orphan() {
     // otherwise the `-` silently grafts `'WORLD'.` onto the prior
     // statement, hiding both the open literal and the skipped comment.
     let src = "       05 A VALUE 'HELLO\n      * COMMENT\n      -    'WORLD'.\n";
-    let (_, errors) = lex(src);
+    let (_, errors) = lex(src, SourceFormat::Fixed);
     assert!(
         errors
             .iter()
@@ -212,7 +213,7 @@ fn unterminated_literal_no_continuation() {
     // `-`), so line 1's logical line stays unterminated and the
     // scanner's existing UnterminatedStringLiteral error fires.
     let src = "       05 A VALUE 'HELLO\n       05 B.\n";
-    let (_, errors) = lex(src);
+    let (_, errors) = lex(src, SourceFormat::Fixed);
     assert!(
         errors.iter().any(|e| matches!(e, LexerError::UnterminatedStringLiteral { .. })),
         "expected UnterminatedStringLiteral, got {errors:?}"
@@ -225,7 +226,7 @@ fn error_recovery() {
     // '~' is not a valid COBOL character; the lexer must record the
     // error and keep emitting tokens from surrounding lines.
     let src = "       01 FOO.\n       05 ~ BAR.\n       05 BAZ.\n";
-    let (tokens, errors) = lex(src);
+    let (tokens, errors) = lex(src, SourceFormat::Fixed);
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(matches!(errors[0], LexerError::InvalidCharacter { ch: '~', .. }));
     let idents: Vec<&str> = tokens
