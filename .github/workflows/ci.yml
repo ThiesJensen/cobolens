@@ -70,12 +70,29 @@ jobs:
               continue
             fi
             # Mirror the local script: allow lines that reference the hook path itself.
-            scan=$(grep -vE '(\./)?\.[c]laude/check-identity\.sh' "$f" || true)
+            # Distinguish grep's "no match" (exit 1) from a real error (exit >=2) so a
+            # broken grep invocation cannot silently produce an empty scan buffer.
+            set +e
+            scan=$(grep -vE '(\./)?\.[c]laude/check-identity\.sh' "$f")
+            rc=$?
+            set -e
+            if [[ $rc -gt 1 ]]; then
+              echo "grep error ($rc) while pre-filtering $f" >&2
+              exit 2
+            fi
             for p in "${patterns[@]}"; do
-              if printf '%s\n' "$scan" | grep -niE "$p" >/dev/null 2>&1; then
+              set +e
+              matches=$(printf '%s\n' "$scan" | grep -niE "$p")
+              rc=$?
+              set -e
+              if [[ $rc -gt 1 ]]; then
+                echo "grep error ($rc) while scanning $f for pattern $p" >&2
+                exit 2
+              fi
+              if [[ -n "$matches" ]]; then
                 echo "FORBIDDEN PATTERN in $f"
                 echo "  pattern: $p"
-                printf '%s\n' "$scan" | grep -niE "$p" | head -5 | sed 's/^/  /'
+                printf '%s\n' "$matches" | head -5 | sed 's/^/  /'
                 echo ""
                 fail=1
               fi
