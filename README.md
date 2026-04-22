@@ -1,5 +1,7 @@
 # copyforge
 
+[![CI](https://github.com/ThiesJensen/cobolens/actions/workflows/ci.yml/badge.svg)](https://github.com/ThiesJensen/cobolens/actions/workflows/ci.yml)
+
 A COBOL copybook parser and binary record decoder written in Rust.
 
 **Status:** early WIP — no features are usable yet.
