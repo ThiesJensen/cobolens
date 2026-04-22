@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  identity-check:
+    name: identity-concealment scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan committed content
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          # Pattern list mirrors the local pre-commit hook script. If you edit one, edit the other.
+          # This is intentional duplication — the hook script is gitignored so CI cannot source it.
+          # Patterns use [x] bracket form so the committed workflow does not self-match.
+          robot=$(printf '\xf0\x9f\xa4\x96')
+          patterns=(
+            '\b[c]laude\b'
+            '\b[a]nthropic\b'
+            '\b[l]lm\b'
+            '\b[c]hatgpt\b'
+            '\b[c]opilot\b'
+            '\b[o]penai\b'
+            '\b[g]pt-?[0-9]+\b'
+            'co-authored-by:[[:space:]]*[c]laude'
+            'co-authored-by:[[:space:]]*[a]i\b'
+            'generated[[:space:]]+with[[:space:]]+.*[c]laude'
+            'generated[[:space:]]+by[[:space:]]+[a]i'
+            '[a]i[-[:space:]]generated'
+            '[a]i[[:space:]]+assistant'
+            "$robot"
+            '[c]laude\.com'
+            '[a]nthropic\.com'
+          )
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD)
+          else
+            mapfile -t files < <(git ls-files)
+          fi
+
+          fail=0
+          for f in "${files[@]}"; do
+            [[ -f "$f" ]] || continue
+            if file --mime "$f" 2>/dev/null | grep -q 'charset=binary'; then
+              continue
+            fi
+            # Mirror the local script: allow lines that reference the hook path itself.
+            scan=$(grep -vE '(\./)?\.[c]laude/check-identity\.sh' "$f" || true)
+            for p in "${patterns[@]}"; do
+              if printf '%s\n' "$scan" | grep -niE "$p" >/dev/null 2>&1; then
+                echo "FORBIDDEN PATTERN in $f"
+                echo "  pattern: $p"
+                printf '%s\n' "$scan" | grep -niE "$p" | head -5 | sed 's/^/  /'
+                echo ""
+                fail=1
+              fi
+            done
+          done
+
+          if [[ $fail -eq 1 ]]; then
+            echo "----"
+            echo "identity scan failed. remove the matches above and retry."
+            exit 1
+          fi
+          echo "identity scan: ok (${#files[@]} file(s) scanned)"
