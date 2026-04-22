@@ -24,6 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # fetch-depth: 0 is required for the pull_request path, where we diff
+          # against base.sha; push-to-main scans git ls-files and does not need it.
           fetch-depth: 0
 
       - name: Scan committed content
@@ -106,13 +108,18 @@ jobs:
           fi
           echo "identity scan: ok (${#files[@]} file(s) scanned)"
 
+  # fmt and clippy pin to MSRV rather than floating stable so a future rustfmt
+  # or clippy release cannot break CI on code that was clean at 1.80.0. Catching
+  # new lints against newer toolchains is a separate concern and would belong in
+  # a dedicated job if we add it later.
   fmt:
     name: rustfmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.80.0"
           components: rustfmt
       - run: cargo fmt --all -- --check
 
@@ -121,8 +128,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.80.0"
           components: clippy
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -132,6 +140,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # docs/TESTING_STRATEGY.md specifies MSRV on ubuntu only; running it on
+        # all three OSes is a deliberate superset to catch platform-specific
+        # MSRV regressions.
         os: [ubuntu-latest, macos-latest, windows-latest]
         rust: [stable, "1.80.0"]
     steps:
